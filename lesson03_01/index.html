@@ -1,0 +1,409 @@
+<html>
+
+<head>
+<title>Learning WebGL &mdash; lesson 3</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 vColor;
+
+    void main(void) {
+        gl_FragColor = vColor;
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec4 aVertexColor;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec4 vColor;
+
+    void main(void) {
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vColor = aVertexColor;
+    }
+</script>
+
+
+<script type="text/javascript">
+
+    var gl;
+    var glEnum;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+            glEnum = [/*0*/ gl.POINTS, /*1*/gl.LINE_STRIP,
+                /*2*/gl.LINE_LOOP, /*3*/gl.LINES,
+                /*4*/gl.TRIANGLES, /*5*/gl.TRIANGLE_STRIP,
+                /*6*/gl.TRIANGLE_FAN];
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+
+    //NEW FUNCTIONS
+    var VertexPositionBuffers = [];
+    function drawCircle(r, n,type,place) {
+        var vertices = [];
+        for(var i=0;i<n;i++) {
+            var t = i * (360/n);
+            console.log("i:" + i + "| t:" + t);
+            var x = r * Math.cos(t);
+            var y = r * Math.sin(t);
+            if(t>45 && t<135) {
+                 y = r/2 * Math.sin(t);
+            }
+            var z = 0.0;
+            vertices.push(x);
+            vertices.push(y);
+            vertices.push(z);
+        }
+        addBuffer(vertices,3,n, type,place);
+    }
+
+    function drawCircle2(r, n,type,place) {
+        var vertices = [];
+        for(var i=0;i<n;i++) {
+            var t = i * (360/n);
+            console.log("i:" + i + "| t:" + t);
+            var x = r * Math.cos(t);
+            var y = r * Math.sin(t);
+            if((t>45 && t<135) || (t>225 && t<315) ) {
+                y = r/2 * Math.sin(t);
+                var z = r/2 * Math.sin(t);
+            }
+            vertices.push(x);
+            vertices.push(y);
+            vertices.push(z);
+        }
+        addBuffer(vertices,3,n, type,place);
+    }
+
+    function addBuffer(vertices, itemSize, numItems, type, position) {
+        var tempVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tempVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        tempVertexPositionBuffer.itemSize = itemSize;
+        tempVertexPositionBuffer.numItems = numItems;
+        tempVertexPositionBuffer.type = glEnum[type];
+        if(position) {
+            tempVertexPositionBuffer.position = position;
+        }
+        VertexPositionBuffers.push(tempVertexPositionBuffer);
+    }
+    function addColor(vertices, itemSize, numItems) {
+        var tempVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tempVertexColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        tempVertexColorBuffer.itemSize = itemSize;
+        tempVertexColorBuffer.numItems = numItems;
+        return tempVertexColorBuffer;
+    }
+    function defaultColor(num, type) {
+        colors = []
+        if(!type) {
+            for (var i=0; i < num; i++) {
+                colors = colors.concat([0.5, 0.5, 1.0, 1.0]);
+            }
+        } else {
+            switch(type) {
+                case 'R':
+                    for (var i=0; i < num; i++) {
+                        colors = colors.concat([1.0, 0.0, 0.0, 1.0]);
+                    };
+                    break;
+                case 'G':
+                    for (var i=0; i < num; i++) {
+                        colors = colors.concat([0.0, 1.0, 0.0, 1.0]);
+                    };
+                    break;
+                case 'B':
+                    for (var i=0; i < num; i++) {
+                        colors = colors.concat([0.0, 0.0, 1.0, 1.0]);
+                    };
+                    break;
+            }
+        }
+        return addColor(colors,4,num);
+    }
+    function newColor(num, colorVertice) {
+        colors = []
+        for (var i=0; i < num; i++) {
+            colors = colors.concat(colorVertice);
+        }
+        return addColor(colors,4,num);
+    }
+    function drawShape(tempVertexBuffer) {
+        if(tempVertexBuffer.position) {
+            mat4.translate(mvMatrix, tempVertexBuffer.position);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, tempVertexBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, tempVertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        if(!tempVertexBuffer.color) {
+            tempVertexBuffer.color = defaultColor(tempVertexBuffer.numItems);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, tempVertexBuffer.color);
+        gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, tempVertexBuffer.color.itemSize, gl.FLOAT, false, 0, 0);
+
+        setMatrixUniforms();
+        gl.drawArrays(tempVertexBuffer.type, 0, tempVertexBuffer.numItems);
+    }
+    //END
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+        gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    }
+
+
+    var mvMatrix = mat4.create();
+    var mvMatrixStack = [];
+    var pMatrix = mat4.create();
+
+    function mvPushMatrix() {
+        var copy = mat4.create();
+        mat4.set(mvMatrix, copy);
+        mvMatrixStack.push(copy);
+    }
+
+    function mvPopMatrix() {
+        if (mvMatrixStack.length == 0) {
+            throw "Invalid popMatrix!";
+        }
+        mvMatrix = mvMatrixStack.pop();
+    }
+
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+
+    var triangleVertexPositionBuffer;
+    var triangleVertexColorBuffer;
+    var squareVertexPositionBuffer;
+    var squareVertexColorBuffer;
+
+    function initBuffers() {
+        drawCircle(1.0,1000,3);
+        VertexPositionBuffers[VertexPositionBuffers.length-1].color = defaultColor(1000,"R");
+
+        drawCircle(0.5,100,3);
+
+//        drawCircle2(0.75,1000,3);
+
+        addBuffer([
+            -0.5,0.5,0.5,
+            -0.5,-0.5,0.5,
+            0.5,-0.5,0.5,
+            0.5,0.5,0.5,
+            0.5,0.5,-0.5,
+            -0.5,0.5,-0.5,
+            -0.5,-0.5,-0.5,
+            -0.5,-0.5,0.5,
+        ],3,8,2);
+        VertexPositionBuffers[VertexPositionBuffers.length-1].color = addColor([
+            0.1,0.2,0.3,1.0,
+            0.2,0.2,0.3,1.0,
+            0.1,0.2,0.1,1.0,
+            0.9,0.5,0.3,1.0,
+            0.1,0.6,0.9,1.0,
+            0.55,0.153,0.4,1.0,
+            0.5,0.1,0.15,1.0,
+            0.0,0.0,0.0,1.0,
+        ],4,8);
+
+
+        drawCircle(0.25,100,4);
+
+        drawCircle(0.05,100,4);
+        VertexPositionBuffers[VertexPositionBuffers.length-1].color = newColor(100, [1.0,1.0,0.0,1.0]);
+
+    }
+
+
+
+
+    var rTri = 0;
+    var rSquare = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+        mat4.identity(mvMatrix);
+
+        mat4.translate(mvMatrix, [-1.5, 1.0, -7.0]);
+        drawShape(VertexPositionBuffers[0]);
+
+        mvPushMatrix();
+
+        mat4.rotate(mvMatrix, degToRad(rTri), [0, 0, 1]);
+        drawShape(VertexPositionBuffers[1]);
+
+        mat4.rotate(mvMatrix, degToRad(rTri), [1, 0, 0]);
+        mat4.translate(mvMatrix, [0.0,0.8,0.0]);
+        drawShape(VertexPositionBuffers[4]);
+
+
+        mvPopMatrix();
+        mat4.translate(mvMatrix, [+3.0, 0.0, 0.0]);
+        drawShape(VertexPositionBuffers[0]);
+
+        mvPushMatrix();
+
+        mat4.rotate(mvMatrix, degToRad(rTri), [0, 0, 1]);
+        drawShape(VertexPositionBuffers[1]);
+
+        mat4.rotate(mvMatrix, degToRad(rSquare), [1, 0, 0]);
+        mat4.translate(mvMatrix, [0.0,0.8,0.0]);
+        drawShape(VertexPositionBuffers[4]);
+
+        mvPopMatrix();
+
+        mat4.translate(mvMatrix, [-1.5, -2.0, 0.0]);
+
+        mat4.rotate(mvMatrix, degToRad(rSquare), [1, 1, 1]);
+        drawShape(VertexPositionBuffers[2]);
+
+        mat4.rotate(mvMatrix, degToRad(rSquare), [1, 0, 0]);
+        mat4.translate(mvMatrix, [0.0,0.3,0.0]);
+        drawShape(VertexPositionBuffers[4]);
+
+        mat4.rotate(mvMatrix, degToRad(rSquare), [0, 1, 0]);
+        mat4.translate(mvMatrix, [0.3,0.3,0.0]);
+        drawShape(VertexPositionBuffers[4]);
+
+        mat4.rotate(mvMatrix, degToRad(rTri), [0, 0, 1]);
+        mat4.translate(mvMatrix, [0.3,0.3,0.3]);
+        drawShape(VertexPositionBuffers[4]);
+
+    }
+
+
+    var lastTime = 0;
+
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+
+            rTri += (25 * elapsed) / 1000.0;
+            rSquare -= (75 * elapsed) / 1000.0;
+        }
+        lastTime = timeNow;
+    }
+
+
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+
+
+    function webGLStart() {
+        var canvas = document.getElementById("lesson03-canvas");
+        initGL(canvas);
+        initShaders()
+        initBuffers();
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        tick();
+    }
+
+</script>
+
+</head>
+
+
+<body onload="webGLStart();">
+    <a href="http://learningwebgl.com/blog/?p=239">&lt;&lt; Back to Lesson 3</a><br />
+
+    <canvas id="lesson03-canvas" style="border: none;" width="500" height="500"></canvas>
+
+    <br/>
+    <a href="http://learningwebgl.com/blog/?p=239">&lt;&lt; Back to Lesson 3</a><br />
+</body>
+
+</html>
